@@ -1,0 +1,14 @@
+# Компилиран бинарник — build.bat го прави от изходния код
+/MultiKVM.exe
+/MultiKVM-*.exe
+*.exe
+
+# Локална конфигурация и временни файлове от тестове
+/config.json
+/test-*.json
+*.log
+
+# Бънища на редактори
+/.vscode/
+/.idea/
+*.swp

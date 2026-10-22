@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MultiKVM</title>
+<style>
+  :root{
+    --bg:#0b0e14; --panel:#131826; --panel2:#1a2133; --line:#232c42;
+    --txt:#e6ebf5; --muted:#8b96b0; --acc:#4f8cff; --acc2:#7c5cff;
+    --ok:#2fd47a; --bad:#ff5c6e; --warn:#ffb454;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; font:15px/1.5 "Segoe UI",system-ui,sans-serif;
+    color:var(--txt); background:
+      radial-gradient(1200px 600px at 80% -10%, #1b2440 0%, transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, #241b40 0%, transparent 60%),
+      var(--bg);
+    min-height:100vh;
+  }
+  .wrap{max-width:940px; margin:0 auto; padding:28px 20px 60px}
+  header{display:flex; align-items:center; gap:14px; margin-bottom:22px; flex-wrap:wrap}
+  .logo{
+    width:44px;height:44px;border-radius:12px;flex:none;
+    background:linear-gradient(135deg,var(--acc),var(--acc2));
+    display:grid;place-items:center;font-weight:700;font-size:18px;
+    box-shadow:0 8px 24px rgba(79,140,255,.35);
+  }
+  h1{font-size:22px;margin:0}
+  .sub{color:var(--muted);font-size:13px}
+  .card{
+    background:linear-gradient(180deg,var(--panel),#101522);
+    border:1px solid var(--line); border-radius:16px;
+    padding:18px 20px; margin-bottom:16px;
+    box-shadow:0 10px 30px rgba(0,0,0,.35);
+  }
+  .card h2{font-size:14px; text-transform:uppercase; letter-spacing:.08em;
+    color:var(--muted); margin:0 0 14px}
+  .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+  label{font-size:13px;color:var(--muted);display:block;margin-bottom:4px}
+  input,select{
+    background:var(--panel2); color:var(--txt); border:1px solid var(--line);
+    border-radius:10px; padding:9px 12px; font-size:14px; outline:none; min-width:0;
+  }
+  input:focus,select:focus{border-color:var(--acc)}
+  button{
+    background:var(--panel2); color:var(--txt); border:1px solid var(--line);
+    border-radius:10px; padding:9px 14px; font-size:14px; cursor:pointer;
+    transition:.15s;
+  }
+  button:hover:not(:disabled){border-color:var(--acc); color:#fff}
+  button:disabled{opacity:.5;cursor:progress}
+  button.primary{background:linear-gradient(135deg,var(--acc),var(--acc2)); border:none; font-weight:600}
+  button.primary:hover:not(:disabled){filter:brightness(1.1)}
+  button.danger:hover:not(:disabled){border-color:var(--bad); color:var(--bad)}
+  button.ok{border-color:#2fd47a55;color:#8ef0bb}
+  .seg{display:inline-flex;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:4px}
+  .seg button{border:none;background:none;border-radius:9px;padding:7px 18px}
+  .seg button.on{background:linear-gradient(135deg,var(--acc),var(--acc2)); color:#fff; font-weight:600}
+  .peer{
+    display:flex;align-items:center;gap:12px;
+    background:var(--panel2);border:1px solid var(--line);border-radius:12px;
+    padding:10px 12px;margin-bottom:8px;
+  }
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--bad);flex:none;
+    box-shadow:0 0 0 3px rgba(255,92,110,.15)}
+  .dot.ok{background:var(--ok);box-shadow:0 0 0 3px rgba(47,212,122,.15)}
+  .peer .nm{font-weight:600}
+  .peer .ad{color:var(--muted);font-size:12px}
+  .peer .meta{margin-left:auto;color:var(--muted);font-size:12px;text-align:right}
+  .peer .err{color:var(--bad);font-size:11px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .badge{font-size:11px;padding:3px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+  .badge.left{border-color:#7c5cff66;color:#b39bff}
+  .badge.right{border-color:#4f8cff66;color:#9dbdff}
+  .iconbtn{padding:5px 9px;font-size:13px;line-height:1}
+  .toggle{
+    display:flex;align-items:center;justify-content:space-between;gap:14px;
+    background:linear-gradient(135deg,#182036,#141a2c);
+    border:1px solid var(--line);border-radius:14px;padding:14px 16px;
+  }
+  .switch{width:56px;height:30px;border-radius:999px;background:#2a3350;border:none;position:relative;transition:.2s;flex:none}
+  .switch::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff;transition:.2s}
+  .switch.on{background:linear-gradient(135deg,var(--ok),#1fae63)}
+  .switch.on::after{left:29px}
+  .log{
+    background:#0a0d15;border:1px solid var(--line);border-radius:12px;
+    padding:10px 12px;height:190px;overflow:auto;font:12px/1.6 Consolas,monospace;color:#9fb0cc;
+  }
+  .log div{white-space:pre-wrap}
+  .hint{color:var(--muted);font-size:12px;margin-top:8px}
+  .hint.bad{color:var(--bad)}
+  .hint.ok{color:var(--ok)}
+  .hint.warn{color:var(--warn)}
+  .current{font-size:15px}
+  .current b{color:var(--acc)}
+  kbd{background:var(--panel2);border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;padding:1px 6px;font-size:12px}
+  .alert{
+    background:linear-gradient(135deg,#3a1d22,#2a1620);
+    border:1px solid #ff5c6e55;border-radius:14px;padding:12px 14px;margin-bottom:14px;
+    color:#ffc4cb;font-size:13px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;
+  }
+  .alert b{color:#fff}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:13px}
+  .kv div:nth-child(odd){color:var(--muted)}
+  .scanbox{margin-top:12px}
+  .scanrow{
+    display:flex;align-items:center;gap:10px;padding:9px 12px;
+    background:var(--panel2);border:1px solid var(--line);border-radius:10px;margin-bottom:6px;
+    font-size:13px;
+  }
+  .scanrow.mk{border-color:#2fd47a55;background:linear-gradient(90deg,#16281f,#1a2133)}
+  .scanrow .ip{font-weight:600;font-family:Consolas,monospace}
+  .scanrow .info{color:var(--muted);font-size:12px}
+  .scanrow .sp{margin-left:auto}
+  pre.diag{
+    background:#0a0d15;border:1px solid var(--line);border-radius:12px;padding:12px;
+    max-height:340px;overflow:auto;font:12px/1.5 Consolas,monospace;color:#9fb0cc;
+    white-space:pre-wrap;word-break:break-word;
+  }
+  .tag{font-size:11px;padding:2px 7px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+  .tag.mk{border-color:#2fd47a66;color:#8ef0bb}
+  .tag.warn{border-color:#ffb45466;color:#ffd79a}
+  .spin{display:inline-block;animation:sp 1s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .toast{
+    position:fixed;right:18px;bottom:18px;background:#1a2133;border:1px solid var(--acc);
+    color:#fff;padding:12px 16px;border-radius:12px;font-size:13px;max-width:420px;
+    box-shadow:0 10px 30px rgba(0,0,0,.5);z-index:50;display:none
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">MK</div>
+    <div>
+      <h1>MultiKVM</h1>
+      <div class="sub">Споделяне на мишка и клавиатура между компютри</div>
+    </div>
+    <div style="margin-left:auto" class="current" id="current"></div>
+  </header>
+
+  <div id="alertbox"></div>
+
+  <div class="card">
+    <h2>Роля на този компютър</h2>
+    <div class="row">
+      <div class="seg">
+        <button id="role-primary" onclick="setRole('primary')">Primary (имам мишката)</button>
+        <button id="role-peer" onclick="setRole('peer')">Peer (слушам)</button>
+      </div>
+      <div style="flex:1"></div>
+      <div>
+        <label>Име</label>
+        <input id="name" placeholder="PC-1" onchange="setName(this.value)">
+      </div>
+      <div id="portbox">
+        <label>Порт</label>
+        <input id="port" type="number" style="width:90px" onchange="setPort(this.value)">
+      </div>
+    </div>
+    <div class="hint" id="rolehint"></div>
+  </div>
+
+  <div class="card" id="sharecard">
+    <h2>Споделяне</h2>
+    <div class="toggle">
+      <div>
+        <div style="font-weight:600" id="toggletxt">Изключено</div>
+        <div class="hint" style="margin:2px 0 0">Плъзни мишката до ръба на екрана, за да преминеш към следващия компютър. <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>S</kbd> — бързо вкл./изкл.</div>
+      </div>
+      <button class="switch" id="switch" onclick="toggle()"></button>
+    </div>
+  </div>
+
+  <div class="card" id="peercard">
+    <h2>Компютри</h2>
+    <div id="peers"></div>
+    <div class="row" style="margin-top:12px">
+      <div><label>Име</label><input id="pname" placeholder="Laptop"></div>
+      <div><label>IP адрес (на другия компютър)</label><input id="paddr" placeholder="192.168.1.50:9876"></div>
+      <div><label>Позиция</label>
+        <select id="pdir"><option value="right">Вдясно от този</option><option value="left">Вляво от този</option></select>
+      </div>
+      <div style="align-self:flex-end"><button class="primary" onclick="addPeer()">Добави</button></div>
+      <div><label>Мрежа за сканиране (по избор)</label><input id="scidr" placeholder="авто — напр. 192.168.1.0/24" size="18"></div>
+      <div style="align-self:flex-end"><button onclick="scanNet()" id="scanbtn">🔍 Сканирай мрежата</button></div>
+    </div>
+    <div class="hint">Порядъкът определя подредбата на екрани. Използвай стрелките за пренареждане. Бутонът 📡 проверява дали може да се стигне до компютъра (полезно при проблем с firewall).</div>
+    <div class="scanbox" id="scanbox"></div>
+  </div>
+
+  <div class="card">
+    <h2>Мрежа и защитна стена</h2>
+    <div class="kv" id="netkv"></div>
+    <div class="row" style="margin-top:14px">
+      <button class="primary" onclick="fwAdd()" id="fwbtn">🛡 Разреши в защитната стена</button>
+      <button onclick="fwCheck()">🔄 Провери</button>
+      <button class="danger" onclick="fwRemove()">✕ Премахни правилото</button>
+      <a href="/api/script/install.bat" download><button>⬇ Инсталационен скрипт</button></a>
+    </div>
+    <div class="hint" id="fwhint"></div>
+  </div>
+
+  <div class="card">
+    <h2>Стартиране и достъп</h2>
+    <div class="toggle" style="margin-bottom:10px">
+      <div>
+        <div style="font-weight:600">Стартирай при вход в Windows</div>
+        <div class="hint" style="margin:2px 0 0">Добавя MultiKVM в автостарта (HKCU\...\Run). Не изисква администратор.</div>
+      </div>
+      <button class="switch" id="aswitch" onclick="toggleAutoStart()"></button>
+    </div>
+    <div class="toggle">
+      <div>
+        <div style="font-weight:600">Достъп от мрежата (уеб панел)</div>
+        <div class="hint" style="margin:2px 0 0" id="lanhint">Позволява да отвориш панела от друг компютър в мрежата. Изисква токен.</div>
+      </div>
+      <button class="switch" id="lanswitch" onclick="toggleLAN()"></button>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <a href="/api/script/startup.bat" download><button>⬇ Скрипт за автостарт</button></a>
+      <button onclick="copyDiag()">📋 Копирай отчет за поддръжка</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Диагностика</h2>
+    <div class="row">
+      <button onclick="loadDiag()">🔍 Генерирай отчет</button>
+      <span class="hint" style="margin:0">Изпрати този отчет, ако нещо не работи — съдържа всички настройки, портове и грешки.</span>
+    </div>
+    <pre class="diag" id="diag" style="display:none"></pre>
+  </div>
+
+  <div class="card">
+    <h2>Журнал</h2>
+    <div class="log" id="log"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let S = null;
+let IPS = [];
+const TKEY = 'mkToken';
+
+// ---- токен за достъп от мрежата ----
+const q = new URLSearchParams(location.search);
+if(q.get('token')) sessionStorage.setItem(TKEY, q.get('token'));
+function tok(){ return sessionStorage.getItem(TKEY) || ''; }
+
+// линковете за сваляне на скриптове не могат да пращат заглавия —
+// добавяме токена към адреса
+function tokenizeLinks(){
+  const t = tok();
+  if(!t) return;
+  document.querySelectorAll('a[href^="/api/script/"]').forEach(a=>{
+    const h = a.getAttribute('href').split('?')[0];
+    a.href = h + '?token=' + encodeURIComponent(t);
+  });
+}
+tokenizeLinks();
+
+function toast(msg, ms){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.display = 'block';
+  clearTimeout(t._h);
+  t._h = setTimeout(()=>{ t.style.display='none'; }, ms||4000);
+}
+
+async function api(p, data, raw){
+  const opts = {method: data?'POST':'GET'};
+  if(data) opts.body = new URLSearchParams(data);
+  const t = tok();
+  if(t) opts.headers = {'X-Auth-Token': t};
+  let r;
+  try { r = await fetch(p, opts); }
+  catch(e){ toast('Няма връзка с програмата: '+e.message, 6000); return null; }
+  if(r.status === 401){
+    const t2 = prompt('Този панел изисква токен за достъп. Въведи го:');
+    if(t2){ sessionStorage.setItem(TKEY, t2.trim()); tokenizeLinks(); return api(p, data, raw); }
+    toast('Липсва токен за достъп.', 6000);
+    return null;
+  }
+  if(raw){ return await r.text(); }
+  let j = null;
+  try { j = await r.json(); } catch(e){}
+  // само /api/state връща пълно състояние — иначе S се презаписва с чужд JSON
+  if(j && j.role !== undefined){ S = j; render(); }
+  return j;
+}
+
+function render(){
+  if(!S) return;
+  document.getElementById('role-primary').classList.toggle('on', S.role==='primary');
+  document.getElementById('role-peer').classList.toggle('on', S.role==='peer');
+  document.getElementById('name').value = S.name;
+  document.getElementById('port').value = S.port;
+  document.getElementById('portbox').style.display = S.role==='peer' ? '' : 'none';
+  document.getElementById('sharecard').style.display = S.role==='primary' ? '' : 'none';
+  document.getElementById('peercard').style.display = S.role==='primary' ? '' : 'none';
+
+  document.getElementById('toggletxt').textContent = S.enabled ? 'Включено' : 'Изключено';
+  document.getElementById('switch').classList.toggle('on', S.enabled);
+  document.getElementById('current').innerHTML = S.role==='primary'
+    ? 'Управляваш: <b>'+esc(S.current)+'</b>'
+    : 'Готов за връзка';
+
+  document.getElementById('rolehint').innerHTML = S.role==='primary'
+    ? 'Този компютър държи физическата мишка и клавиатура. Добави другите компютри по-долу с техните IP адреси.'
+    : 'Този компютър само приема команди. Увери се, че порт '+S.port+' е отворен в защитната стена. На другия компютър добави IP-то на този като peer. IP-та на тази машина: <b>'+esc((S.ips||[]).join('  ·  '))+'</b>';
+
+  // --- аларми ---
+  const alerts = [];
+  if(S.firewall && !S.firewall.ruleExists && S.role==='peer'){
+    alerts.push('<b>Защитната стена блокира връзките.</b> Натисни „Разреши в защитната стена“ — ще се поискат администраторски права.');
+  }
+  if(S.firewall && S.firewall.ruleExists && !S.firewall.portOpen){
+    alerts.push('<b>Правилото в защитната стена не покрива порта '+S.port+'.</b> Натисни „Разреши в защитната стена“.');
+  }
+  if(S.role==='primary' && S.rawIn===0 && S.hookMouse>0){
+    alerts.push('<b>Суровият вход (raw input) не се получава на тази машина.</b> Програмата преминава в резервен режим — преминаването между екрани може да е малко по-бавно (изисква се да държиш мишката натисната на ръба ~0,2 сек).');
+  }
+  document.getElementById('alertbox').innerHTML = alerts.map(a=>'<div class="alert">⚠️ '+a+'</div>').join('');
+
+  // --- мрежа ---
+  const fw = S.firewall || {};
+  document.getElementById('netkv').innerHTML =
+    '<div>IP адреси</div><div>'+esc((S.ips||[]).join(', ')||'няма')+'</div>'+
+    '<div>Роля / порт</div><div>'+esc(S.role)+' · '+S.port+'</div>'+
+    '<div>Слушател</div><div>'+(S.listener?'активен на порт '+S.port:'не слуша (роля: primary)')+'</div>'+
+    '<div>Защитна стена</div><div>'+(fw.ruleExists?(fw.portOpen?'✅ правилото е на място':'⚠️ правилото е на място, но не покрива порта'):'❌ няма правило')+'</div>'+
+    '<div>Администратор</div><div>'+(S.admin?'да':'не')+'</div>'+
+    '<div>Вход от мишката</div><div>'+S.rawIn+' raw / '+S.hookMouse+' hook'+(S.rawIn?' ':' <span class="tag warn">резервен режим</span>')+'</div>'+
+    '<div>Екран</div><div>'+esc(S.screen||'')+' · мащабиране '+S.scale+'% · DPI: '+esc(S.dpi||'')+'</div>';
+
+  const fwh = document.getElementById('fwhint');
+  if(!fw.ruleExists){
+    fwh.className = 'hint bad';
+    fwh.textContent = 'Няма отворени портове. Бутонът отваря TCP '+S.port+' в защитната стена (изисква администраторски права — ще се появи UAC прозорец).';
+  } else if(!fw.portOpen){
+    fwh.className = 'hint warn';
+    fwh.textContent = 'Правилото съществува, но не покрива текущия порт. Натисни бутона, за да се обнови.';
+  } else {
+    fwh.className = 'hint ok';
+    fwh.textContent = 'Портът е отворен в защитната стена. Другите компютри трябва да могат да се свържат.';
+  }
+
+  // --- автостарт / LAN ---
+  document.getElementById('aswitch').classList.toggle('on', !!S.autostart);
+  document.getElementById('lanswitch').classList.toggle('on', !!S.lan);
+  document.getElementById('lanhint').innerHTML = S.lan
+    ? 'Достъп от мрежата е включен. Отвори от друг компютър: <b>'+esc(S.lanurl)+'</b>'
+    : 'Позволява да отвориш панела от друг компютър в мрежата. Изисква токен.';
+
+  // peers
+  const box = document.getElementById('peers');
+  box.innerHTML = '';
+  (S.peers||[]).forEach((p,i)=>{
+    const d = document.createElement('div');
+    d.className = 'peer';
+    const err = (p.error && !p.connected)
+      ? '<div class="err" title="'+esc(p.error)+'">❌ '+esc(p.error)+'</div>' : '';
+    d.innerHTML =
+      '<div class="dot '+(p.connected?'ok':'')+'"></div>'+
+      '<div><div class="nm">'+esc(p.name||p.addr)+'</div><div class="ad">'+esc(p.addr)+'</div>'+err+'</div>'+
+      '<span class="badge '+p.dir+'">'+(p.dir==='left'?'◄ вляво':'вдясно ►')+'</span>'+
+      '<div class="meta">'+(p.connected?('свързан · '+p.screen+' · '+p.rtt+' ms'):'изключен')+'</div>'+
+      '<button class="iconbtn" title="Провери връзка" onclick="testConn(\''+esc(p.addr)+'\')">📡</button>'+
+      '<button class="iconbtn" title="Нагоре" onclick="mvPeer('+i+',-1)">▲</button>'+
+      '<button class="iconbtn" title="Надолу" onclick="mvPeer('+i+',1)">▼</button>'+
+      '<button class="iconbtn danger" title="Премахни" onclick="rmPeer('+i+')">✕</button>';
+    box.appendChild(d);
+  });
+  if(!(S.peers||[]).length){
+    box.innerHTML = '<div class="hint">Няма добавени компютри. Добави IP адреса на другия компютър по-долу или натисни „Сканирай мрежата“.</div>';
+  }
+
+  // logs
+  const lg = document.getElementById('log');
+  lg.innerHTML = (S.logs||[]).map(l=>'<div>'+esc(l)+'</div>').join('');
+  lg.scrollTop = lg.scrollHeight;
+}
+
+function esc(s){ return String(s??'').replace(/[<>&]/g, c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])); }
+
+function setRole(r){ api('/api/role',{role:r}); }
+function setName(v){ api('/api/name',{name:v}); }
+function setPort(v){ api('/api/port',{port:v}); }
+function toggle(){ api('/api/toggle'); }
+function addPeer(){
+  api('/api/peer/add',{
+    name: document.getElementById('pname').value,
+    addr: document.getElementById('paddr').value,
+    dir:  document.getElementById('pdir').value
+  }).then(()=>{
+    document.getElementById('pname').value='';
+    document.getElementById('paddr').value='';
+  });
+}
+function rmPeer(i){ api('/api/peer/remove',{i}); }
+function mvPeer(i,d){ api('/api/peer/move',{i,d}); }
+async function testConn(addr){
+  const r = await fetch('/api/testconn', {method:'POST', body:new URLSearchParams({addr})});
+  const j = await r.json();
+  alert(j.ok ? ('✅ Връзката с '+addr+' е успешна ('+j.ms+' ms)') : ('❌ Неуспешна: '+j.err));
+  api('/api/state');
+}
+
+// ---- сканиране на мрежата ----
+async function scanNet(){
+  const port = S ? S.port : 9876;
+  const cidrEl = document.getElementById('scidr');
+  const cidr = cidrEl ? cidrEl.value.trim() : '';
+  const box = document.getElementById('scanbox');
+  const btn = document.getElementById('scanbtn');
+  btn.disabled = true;
+  box.innerHTML = '<div class="hint">Сканиране на локалната мрежа за порт '+port+'... <span class="spin">⟳</span></div>';
+  const j = await api('/api/scan', {port:port, cidr:cidr});
+  btn.disabled = false;
+  if(!j) { box.innerHTML = '<div class="hint bad">Сканирането не е завършило.</div>'; return; }
+  if(j.error){ box.innerHTML = '<div class="hint bad">'+esc(j.error)+'</div>'; return; }
+  if(!j.hosts || !j.hosts.length){
+    box.innerHTML = '<div class="hint">Няма намерени устройства с отворен порт '+port+
+      ' в мрежите '+esc((j.subnets||[]).join(', '))+' ('+j.scanned+' адреса, '+j.durationMs+' мс).</div>';
+    return;
+  }
+  let h = '<div class="hint" style="margin-bottom:6px">Намерени '+j.hosts.length+' отворени порта '+port+
+    ' (сканирани '+j.scanned+' адреса за '+j.durationMs+' мс):</div>';
+  j.hosts.forEach(x=>{
+    const nm = x.peerName || x.name || '';
+    h += '<div class="scanrow '+(x.multiKvm?'mk':'')+'">'+
+      '<span class="ip">'+esc(x.ip)+'</span>'+
+      '<span class="info">'+esc(nm)+(x.screen?' · '+esc(x.screen):'')+' · '+x.latency+' ms</span>'+
+      (x.multiKvm?'<span class="tag mk">MultiKVM</span>':'<span class="tag">отворен порт</span>')+
+      '<span class="sp"><button class="iconbtn" onclick="useHost(\''+esc(x.ip)+':'+port+'\',\''+esc(x.peerName||x.name||'')+'\')">➕ Добави</button></span>'+
+      '</div>';
+  });
+  box.innerHTML = h;
+}
+function useHost(addr, name){
+  document.getElementById('paddr').value = addr;
+  if(name) document.getElementById('pname').value = name;
+  document.getElementById('paddr').focus();
+  toast('Адресът е попълнен — натисни „Добави“.');
+}
+
+// ---- защитна стена ----
+async function fwAdd(){
+  const btn = document.getElementById('fwbtn');
+  btn.disabled = true;
+  const old = btn.textContent;
+  btn.textContent = '⏳ Изчаквай потвърждение (UAC)…';
+  const j = await api('/api/firewall', {action:'add'});
+  btn.disabled = false; btn.textContent = old;
+  if(!j) return;
+  if(j.ok) toast('✅ Защитната стена: портът е отворен.');
+  else toast('❌ Неуспешно: '+(j.error||'провери отчета'), 7000);
+  api('/api/state');
+}
+async function fwCheck(){ await api('/api/firewall',{action:'check'}); await api('/api/state'); toast('Проверено.'); }
+async function fwRemove(){
+  if(!confirm('Да се премахне ли правилото от защитната стена?')) return;
+  const j = await api('/api/firewall',{action:'remove'});
+  if(j) toast('Правилото е премахнато.');
+  api('/api/state');
+}
+
+// ---- автостарт / LAN ----
+async function toggleAutoStart(){
+  const on = !(S && S.autostart);
+  const j = await api('/api/autostart',{on: on?'1':'0'});
+  if(j && j.ok) toast(on ? '✅ MultiKVM ще се стартира при вход в Windows.' : 'Автостартът е изключен.');
+  api('/api/state');
+}
+async function toggleLAN(){
+  const on = !(S && S.lan);
+  const j = await api('/api/lan',{on: on?'1':'0'});
+  if(j && j.ok){
+    if(on){
+      toast('Достъп от мрежата е включен. Адрес: '+(j.url||''), 9000); copy(j.url||'');
+      if(j.firewall === false) toast('⚠️ Портът не е отворен в защитната стена — отваря го с бутона „Разреши в защитната стена“.', 12000);
+    }
+    else toast('Достъпът от мрежата е изключен.');
+  }
+  api('/api/state');
+}
+function copy(t){
+  if(!t) return;
+  if(navigator.clipboard) navigator.clipboard.writeText(t).catch(()=>{});
+}
+
+// ---- диагностика ----
+async function loadDiag(){
+  const el = document.getElementById('diag');
+  el.style.display = 'block';
+  el.textContent = 'Генериране...';
+  const txt = await api('/api/diag', null, true);
+  el.textContent = txt || 'Неуспешно.';
+}
+async function copyDiag(){
+  const txt = await api('/api/diag', null, true);
+  if(!txt) return;
+  if(navigator.clipboard){
+    try { await navigator.clipboard.writeText(txt); toast('📋 Отчетът е копиран в клипборда.'); return; } catch(e){}
+  }
+  const ta = document.createElement('textarea');
+  ta.value = txt; document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); toast('📋 Отчетът е копиран.'); } catch(e){ toast('Копирането не е възможно.'); }
+  document.body.removeChild(ta);
+}
+
+setInterval(()=>api('/api/state'), 1500);
+api('/api/state');
+</script>
+</body>
+</html>
