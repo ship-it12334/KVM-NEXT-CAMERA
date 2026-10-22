@@ -229,7 +229,8 @@
     <h2>Диагностика</h2>
     <div class="row">
       <button onclick="loadDiag()">🔍 Генерирай отчет</button>
-      <span class="hint" style="margin:0">Изпрати този отчет, ако нещо не работи — съдържа всички настройки, портове и грешки.</span>
+      <button onclick="showCursorNow()">🖱 Покажи курсора</button>
+      <span class="hint" style="margin:0">Ако курсорът е невидим (мишката работи, но няма стрелка) — натисни „Покажи курсора“.</span>
     </div>
     <pre class="diag" id="diag" style="display:none"></pre>
   </div>
@@ -500,6 +501,12 @@ async function loadDiag(){
   el.textContent = 'Генериране...';
   const txt = await api('/api/diag', null, true);
   el.textContent = txt || 'Неуспешно.';
+}
+async function showCursorNow(){
+  const j = await api('/api/cursor', {action:'show'});
+  if(j && j.level < 0) toast('Курсорът пак е скрит (ниво '+j.level+') — някоя друга програма го крие.', 8000);
+  else toast('🖱 Курсорът е възстановен (ниво '+((j&&j.level)||0)+').');
+  api('/api/state');
 }
 async function copyDiag(){
   const txt = await api('/api/diag', null, true);

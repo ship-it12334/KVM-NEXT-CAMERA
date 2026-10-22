@@ -86,6 +86,15 @@ func (a *App) diagReport() string {
 	}
 	w("Raw input (WM_INPUT): %d съобщения\n", a.ctl.rawIn.Load())
 	w("Hook мишка        : %d събития\n", a.ctl.hookMouse.Load())
+	if lvl := cursorLevel(); lvl < 0 {
+		w("Курсор            : СКРИТ (ниво %d) — натисни „Покажи курсора“ в панела\n", lvl)
+	} else {
+		w("Курсор            : видим (ниво %d)\n", lvl)
+	}
+	if cfg.Role != "primary" {
+		w("Получени движения : %d (последна позиция %d,%d, неуспешни %d)\n",
+			a.inMove.Load(), a.moveX.Load(), a.moveY.Load(), a.moveFail.Load())
+	}
 	if a.ctl.rawIn.Load() == 0 && a.ctl.hookMouse.Load() > 0 {
 		w("  -> Raw input не пристига. Програмата използва резервен режим\n")
 		w("     (движение по позиция от hook-а). Ако преминаването между\n")

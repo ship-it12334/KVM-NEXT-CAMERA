@@ -191,6 +191,21 @@ func (a *App) routes() http.Handler {
 		w.Write([]byte(a.diagReport()))
 	})
 
+	// ---- Курсор: възстановяване, ако е останал скрит ----
+	mux.HandleFunc("/api/cursor", func(w http.ResponseWriter, r *http.Request) {
+		if r.FormValue("action") == "show" {
+			restored := ensureCursorVisible()
+			a.ctl.hidCursor.Store(false)
+			lvl := cursorLevel()
+			if restored {
+				a.logf("Курсорът е възстановен ръчно (ниво %d)", lvl)
+			}
+			json.NewEncoder(w).Encode(map[string]any{"ok": true, "level": lvl, "restored": restored})
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"level": cursorLevel()})
+	})
+
 	// ---- Автостарт ----
 	mux.HandleFunc("/api/autostart", func(w http.ResponseWriter, r *http.Request) {
 		on := r.FormValue("on") == "1"
@@ -318,6 +333,10 @@ type stateJSON struct {
 	RawIn     int64        `json:"rawIn"`
 	HookMouse int64        `json:"hookMouse"`
 	HookKey   int64        `json:"hookKey"`
+	InMove    int64        `json:"inMove"`
+	MoveFail  int64        `json:"moveFail"`
+	MoveX     int32        `json:"moveX"`
+	MoveY     int32        `json:"moveY"`
 }
 
 func (a *App) stateJSON() stateJSON {

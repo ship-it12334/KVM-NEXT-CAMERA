@@ -40,6 +40,12 @@ type App struct {
 	inKey atomic.Int64
 	inBad atomic.Int64
 
+	// диагностика на входящите движения (peer роля)
+	inMove   atomic.Int64
+	moveFail atomic.Int64
+	moveX    atomic.Int32
+	moveY    atomic.Int32
+
 	peerScreenMu sync.Mutex
 	peerScreens  map[int][2]int
 
@@ -190,6 +196,8 @@ func (a *App) StartRole() {
 		if err := a.startPeerListener(); err != nil {
 			a.logf("Грешка при стартиране на listener: %v", err)
 		}
+		overlay.setEnabled(true)
+		startOverlay()
 		a.logf("Роля: PEER — слушам на порт %d", cfg.Port)
 	}
 }
@@ -389,6 +397,13 @@ func main() {
 	// Първо DPI awareness — иначе всички екранни координати са
 	// виртуализирани и преходът между екрани се чупи при мащабиране.
 	dpi := setDpiAwareness()
+
+	// Ако предишен (сривнал се) процес е оставил курсора скрит —
+	// ShowCursor броячът е общ за сесията и курсорът остава невидим,
+	// макар мишката да работи. Връщаме го при старт.
+	if ensureCursorVisible() {
+		log.Printf("Курсорът беше скрит от предишен процес — възстановен")
+	}
 
 	cfg := loadConfig()
 	if *flagRole != "" {

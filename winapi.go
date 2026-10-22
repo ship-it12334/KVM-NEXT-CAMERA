@@ -73,6 +73,7 @@ var (
 	kernel32 = syscall.NewLazyDLL("kernel32.dll")
 	shell32  = syscall.NewLazyDLL("shell32.dll")
 	advapi32 = syscall.NewLazyDLL("advapi32.dll")
+	gdi32    = syscall.NewLazyDLL("gdi32.dll")
 
 	procSetWindowsHookExW   = user32.NewProc("SetWindowsHookExW")
 	procCallNextHookEx      = user32.NewProc("CallNextHookEx")
@@ -97,9 +98,31 @@ var (
 	procDestroyWindow      = user32.NewProc("DestroyWindow")
 	procPostThreadMessageW = user32.NewProc("PostThreadMessageW")
 	procLoadCursorW        = user32.NewProc("LoadCursorW")
+	procLoadIconW          = user32.NewProc("LoadIconW")
+	procSetCursor          = user32.NewProc("SetCursor")
+	procInvalidateRect     = user32.NewProc("InvalidateRect")
+	procGetWindowRect      = user32.NewProc("GetWindowRect")
 
 	procRegisterRawInputDevices = user32.NewProc("RegisterRawInputDevices")
 	procGetRawInputData         = user32.NewProc("GetRawInputData")
+
+	procSetLayeredWindowAttributes = user32.NewProc("SetLayeredWindowAttributes")
+	procShowWindow                 = user32.NewProc("ShowWindow")
+	procSetWindowPos               = user32.NewProc("SetWindowPos")
+	procGetClientRect              = user32.NewProc("GetClientRect")
+	procBeginPaint                 = user32.NewProc("BeginPaint")
+	procEndPaint                   = user32.NewProc("EndPaint")
+	procFillRect                   = user32.NewProc("FillRect")
+
+	procCreatePen        = gdi32.NewProc("CreatePen")
+	procCreateSolidBrush = gdi32.NewProc("CreateSolidBrush")
+	procSelectObject     = gdi32.NewProc("SelectObject")
+	procDeleteObject     = gdi32.NewProc("DeleteObject")
+	procPolygon          = gdi32.NewProc("Polygon")
+	procSetBkMode        = gdi32.NewProc("SetBkMode")
+	procGetStockObject   = gdi32.NewProc("GetStockObject")
+	procMoveToEx         = gdi32.NewProc("MoveToEx")
+	procLineTo           = gdi32.NewProc("LineTo")
 
 	// DPI + монитори
 	procSetProcessDpiAwarenessContext = user32.NewProc("SetProcessDpiAwarenessContext")
@@ -127,9 +150,35 @@ const (
 	ridevInputSink = 0x00000100
 	hwndMessage    = ^uintptr(2) // (HWND)-3
 	idcArrow       = 32512
-	csHRedraw      = 0x0002
-	csVRedraw      = 0x0001
-	wmInput        = 0x00FF
+
+	csHRedraw = 0x0002
+	csVRedraw = 0x0001
+
+	wsPopup = 0x80000000
+
+	wsExLayered     = 0x00080000
+	wsExTransparent = 0x00000020
+	wsExToolWindow  = 0x00000080
+	wsExTopmost     = 0x00000008
+	wsExNoActivate  = 0x08000000
+
+	lwaColorKey = 0x00000001
+	lwaAlpha    = 0x00000002
+
+	swHide           = 0
+	swShowNoActivate = 4
+	swShow           = 5
+
+	hwndTopMost = ^uintptr(0)
+
+	swpNoActivate = 0x0010
+	swpNomove     = 0x0002
+	swpNosize     = 0x0001
+	swpNozorder   = 0x0004
+
+	diNormal = 0x0003
+
+	wmInput = 0x00FF
 )
 
 type wndClassEx struct {
@@ -157,6 +206,11 @@ type rawInputDevice struct {
 func getCurrentThreadID() uintptr {
 	r, _, _ := procGetCurrentThreadId.Call()
 	return r
+}
+
+func getModuleHandle() uintptr {
+	h, _, _ := procGetModuleHandleW.Call(0)
+	return h
 }
 
 func postThreadMessage(tid uint32, wm uint32) bool {
@@ -317,11 +371,49 @@ func showCursor(show bool) {
 	}
 	// показваме/скриваме докато се изчерпа броячът
 	for i := 0; i < 16; i++ {
-		r, _, _ := procShowCursor.Call(uintptr(uint32(int32(v))))
-		if (show && int32(r) >= 0) || (!show && int32(r) < 0) {
+		c := showCursorCall(int32(v))
+		if (show && c >= 0) || (!show && c < 0) {
 			break
 		}
 	}
+}
+
+// showCursorCall вика ShowCursor с дадена стъпка (+1/-1) и връща новото ниво.
+func showCursorCall(delta int32) int32 {
+	r, _, _ := procShowCursor.Call(uintptr(uint32(delta)))
+	return int32(r)
+}
+
+// ensureCursorVisible възстановява курсора, ако предишен процес (напр.
+// сривнал се MultiKVM в роля primary) го е оставил скрит. Броячът на
+// ShowCursor е общ за сесията: след ShowCursor(FALSE) без съответно
+// ShowCursor(TRUE) курсорът остава невидим за ВСИЧКИ програми, докато
+// някой не върне брояча до 0. Затова при старт го връщаме до 0, но не
+// повече — за да не пречим на програми, които умишлено крият курсора.
+func ensureCursorVisible() bool {
+	changed := false
+	for i := 0; i < 16; i++ {
+		c := showCursorCall(1)
+		if c < 0 {
+			changed = true
+			continue // още сме скрити — показваме пак
+		}
+		if c > 0 {
+			// вдигнали сме брояча над 0 — връщаме точно до 0
+			showCursorCall(-1)
+		}
+		return changed || c > 0
+	}
+	return changed
+}
+
+// cursorLevel връща текущото ниво на брояча на ShowCursor, без да го
+// променя (вдигаме с 1 и веднага връщаме). Ниво < 0 означава, че
+// курсорът е СКРИТ за цялата сесия.
+func cursorLevel() int {
+	lvl := int(showCursorCall(1)) - 1
+	showCursorCall(-1)
+	return lvl
 }
 
 func getSystemMetrics(idx int32) int {
@@ -342,6 +434,43 @@ func sendMouse(flags, data uint32, dx, dy int32) bool {
 	inp.Mi = mouseInput{Dx: dx, Dy: dy, MouseData: data, Flags: flags}
 	r, _, _ := procSendInput.Call(1, uintptr(unsafe.Pointer(&inp)), unsafe.Sizeof(inp))
 	return r == 1
+}
+
+// sendMouseAbs принуждава Windows да обнови визуалния курсор на Windows 10
+// (SetCursorPos понякога променя само логическата позиция).
+func sendMouseAbs(x, y int32) {
+	vw := getSystemMetrics(smCXVirtualScreen)
+	vh := getSystemMetrics(smCYVirtualScreen)
+	vx := getSystemMetrics(smXVirtualScreen)
+	vy := getSystemMetrics(smYVirtualScreen)
+	if vw <= 0 || vh <= 0 {
+		vw = getSystemMetrics(smCxScreen)
+		vh = getSystemMetrics(smCyScreen)
+		vx = 0
+		vy = 0
+	}
+	// MOUSEEVENTF_ABSOLUTE очаква 0..65535 в координатите на виртуалния екран
+	if vw <= 1 {
+		vw = 1
+	}
+	if vh <= 1 {
+		vh = 1
+	}
+	ax := int32(float64(x-int32(vx)) * 65535.0 / float64(vw-1))
+	ay := int32(float64(y-int32(vy)) * 65535.0 / float64(vh-1))
+	if ax < 0 {
+		ax = 0
+	}
+	if ax > 65535 {
+		ax = 65535
+	}
+	if ay < 0 {
+		ay = 0
+	}
+	if ay > 65535 {
+		ay = 65535
+	}
+	sendMouse(mouseeventfMove|0x8000, 0, ax, ay)
 }
 
 // sendKey инжектира клавиша. scan и ext идват от hook-а (точни за текущия layout).

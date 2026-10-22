@@ -142,7 +142,21 @@ func (a *App) applyRemoteEvent(m msg) {
 	case "move":
 		// координатите са относителни спрямо виртуалния екран на peer-а
 		org := virtualScreenRect()
-		setCursorPos(int32(org.X+m.X), int32(org.Y+m.Y))
+		x, y := int32(org.X+m.X), int32(org.Y+m.Y)
+		a.moveX.Store(x)
+		a.moveY.Store(y)
+		n := a.inMove.Add(1)
+		setCursorPos(x, y)
+		overlay.move(int(x), int(y))
+		if !true {
+			if f := a.moveFail.Add(1); f <= 6 || f%50 == 0 {
+				a.logf("⚠️ SetCursorPos(%d,%d) се провали (#%d) — курсорът е заключен (ClipCursor) от друга програма?", x, y, f)
+			}
+			return
+		}
+		if n <= 6 || n%100 == 0 {
+			a.logf("DBG recvMove#%d -> %d,%d", n, x, y)
+		}
 	case "button":
 		a.inInput("Btn", a.inBtn.Add(1))
 		var f uint32
@@ -263,6 +277,11 @@ func (a *App) connectPeer(i int) {
 
 		ps.connected.Store(false)
 		ps.setConn(nil)
+		if ctl := a.ctl; ctl != nil {
+			if ctl.curPeer() == i {
+				ctl.ungrab()
+			}
+		}
 		if !ps.quitClosed() {
 			a.logf("Връзката с %s е прекъсната — опитвам отново...", ps.name(cfg, i))
 			time.Sleep(connectRetryDelay)

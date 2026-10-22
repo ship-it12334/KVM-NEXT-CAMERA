@@ -90,6 +90,12 @@ type Controller struct {
 	lastRawMoveAt  atomic.Int64 // unix nano на последния ненулев raw делта
 	lastHookMoveAt atomic.Int64 // unix nano на последното движение от hook-а
 
+	// hidCursor е true, докато ние сме скрили курсора (ShowCursor(FALSE)).
+	// Пазим го, за да можем гарантирано да го върнем — броячът на
+	// ShowCursor е общ за сесията и ако процесът умре, докато е скрит,
+	// курсорът остава невидим за всички програми.
+	hidCursor atomic.Bool
+
 	sends atomic.Int64 // брой изпратени съобщения (за UI статистика)
 }
 
@@ -177,6 +183,7 @@ func (c *Controller) Start() {
 		c.hookTid.Store(0)
 		close(done)
 	})
+	go c.cursorWatch()
 }
 
 func (c *Controller) Stop() {
@@ -391,6 +398,7 @@ func (c *Controller) grab(layout []Screen, idx, dirX, relY int) {
 		clipCursor(nil)
 	}
 	showCursor(false)
+	c.hidCursor.Store(true)
 	c.sendMove(s.PeerIdx, vx, vy)
 	c.app.logf("→ контролираме екран на %s (raw=%v)", c.app.peerName(s.PeerIdx), c.remoteViaRaw)
 }
@@ -403,12 +411,37 @@ func (c *Controller) ungrab() {
 	c.lastSwitch = time.Now()
 	c.remoteViaRaw = false
 	c.stateMu.Unlock()
-	if was != stRemote {
+	// освобождаваме клипа винаги — иначе при неочаквано състояние
+	// курсорът остава заклещен в 1x1 пиксел
+	clipCursor(nil)
+	if was != stRemote && !c.hidCursor.Load() {
 		return
 	}
-	clipCursor(nil)
 	c.showCursorAsync()
+	c.hidCursor.Store(false)
 	c.app.logf("→ контролираме локалния екран")
+}
+
+// cursorWatch е предпазна проверка: ако сме скрили курсора, но вече не
+// сме в remote режим (напр. състоянието е било нулирано без ungrab),
+// връщаме курсора. Така курсорът не може да остане невидим за сесията.
+func (c *Controller) cursorWatch() {
+	for !c.stopped.Load() {
+		time.Sleep(time.Second)
+		if !c.hidCursor.Load() {
+			continue
+		}
+		c.stateMu.Lock()
+		remote := c.state == stRemote
+		c.stateMu.Unlock()
+		if remote {
+			continue
+		}
+		if c.hidCursor.Swap(false) {
+			c.showCursorAsync()
+			c.app.logf("⚠️ Курсорът беше скрит извън remote режим — възстановен")
+		}
+	}
 }
 
 // ungrabToPrimary връща курсора на primary екрана на дадена позиция.
@@ -747,12 +780,43 @@ func (c *Controller) switchTo(layout []Screen, idx, nx, ny int) {
 		return
 	}
 	vy := clampInt(ny, 0, s.H-1)
+	useRaw := c.rawOK()
+
 	c.stateMu.Lock()
 	c.state = stRemote
 	c.cur = idx
 	c.vx, c.vy = nx, vy
 	c.lastSwitch = time.Now()
+	c.remoteViaRaw = useRaw
+	c.pushStart = time.Time{}
+	c.pushLast = time.Time{}
+	c.edgeAccX = 0
 	c.stateMu.Unlock()
+
+	// При преминаване между listener-и винаги правим същото като grab()
+	// за да не се обърка състоянието и да продължат кликванията да стигат.
+	if useRaw {
+		if cx, cy, ok := getCursorPos(); ok {
+			mon := monitorRectAt(cx, cy)
+			area := localArea()
+			if mon.empty() {
+				mon = area
+			}
+			var edge int32
+			if nx == 0 {
+				edge = int32(mon.X)
+			} else {
+				edge = int32(mon.right() - 1)
+			}
+			clipCursor(&rect{Left: edge, Top: int32(cy), Right: edge + 1, Bottom: int32(cy) + 1})
+		} else {
+			clipCursor(nil)
+		}
+	} else {
+		clipCursor(nil)
+	}
+	showCursor(false)
+	c.hidCursor.Store(true)
 	c.sendMove(s.PeerIdx, nx, vy)
 	c.app.logf("→ контролираме екран на %s (raw=%v)", c.app.peerName(s.PeerIdx), c.remoteViaRaw)
 }
@@ -854,6 +918,22 @@ func primaryLayoutIndex(layout []Screen) int {
 		if s.PeerIdx < 0 {
 			return i
 		}
+	}
+	return -1
+}
+
+// curPeer връща peer индекса, към който сме насочени, или -1.
+func (c *Controller) curPeer() int {
+	c.stateMu.Lock()
+	idx := c.cur
+	remote := c.state == stRemote
+	c.stateMu.Unlock()
+	if !remote {
+		return -1
+	}
+	layout := c.app.buildLayout()
+	if idx >= 0 && idx < len(layout) {
+		return layout[idx].PeerIdx
 	}
 	return -1
 }
