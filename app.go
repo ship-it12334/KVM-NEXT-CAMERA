@@ -196,8 +196,7 @@ func (a *App) StartRole() {
 		if err := a.startPeerListener(); err != nil {
 			a.logf("Грешка при стартиране на listener: %v", err)
 		}
-		overlay.setEnabled(true)
-		startOverlay()
+		overlay.setEnabled(false)
 		a.logf("Роля: PEER — слушам на порт %d", cfg.Port)
 	}
 }

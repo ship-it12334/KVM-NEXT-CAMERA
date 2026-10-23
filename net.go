@@ -147,8 +147,9 @@ func (a *App) applyRemoteEvent(m msg) {
 		a.moveY.Store(y)
 		n := a.inMove.Add(1)
 		setCursorPos(x, y)
-		overlay.move(int(x), int(y))
-		if !true {
+		// overlay изключен — причиняваше объркване на кликовете/визуализацията
+		// при преминаване между машини
+		if false {
 			if f := a.moveFail.Add(1); f <= 6 || f%50 == 0 {
 				a.logf("⚠️ SetCursorPos(%d,%d) се провали (#%d) — курсорът е заключен (ClipCursor) от друга програма?", x, y, f)
 			}
